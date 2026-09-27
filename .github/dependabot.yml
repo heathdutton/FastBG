@@ -1,0 +1,13 @@
+# Every action is pinned to a commit, so Dependabot is what moves the pins, and their version comments, along.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    # A week for a hijacked release to be caught before it's proposed here.
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]

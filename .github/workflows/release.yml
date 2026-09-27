@@ -1,0 +1,65 @@
+# Builds, signs with Developer ID, notarizes and publishes FastBG when a plain semver tag like 1.2.3 is pushed, once
+# the same checks as ci pass. The signing secrets live in the release environment, which only such tags can reach:
+#
+# - FASTBG_P12_BASE64: a .p12 holding the team's Apple Development and Developer ID Application identities, base64
+# - FASTBG_P12_PASSWORD: its passphrase
+# - FASTBG_PROFILE_BASE64: the app's Developer ID provisioning profile, which the API key can't fetch, base64
+# - FASTBG_ASC_KEY_P8: an App Store Connect team API key, Admin, since Xcode makes the provisioning profiles with it
+# - FASTBG_ASC_KEY_ID and FASTBG_ASC_ISSUER: that key's ID and issuer ID
+name: release
+
+on:
+  push:
+    tags: ["[0-9]+.[0-9]+.[0-9]+"]
+
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  release:
+    name: build, notarize and publish
+    needs: checks
+    runs-on: macos-26
+    timeout-minutes: 90
+    environment: release
+    permissions:
+      contents: write # gh release create
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The build number counts commits, so it needs all of them.
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+
+      - name: Set up signing
+        env:
+          FASTBG_P12_BASE64: ${{ secrets.FASTBG_P12_BASE64 }}
+          FASTBG_P12_PASSWORD: ${{ secrets.FASTBG_P12_PASSWORD }}
+          FASTBG_PROFILE_BASE64: ${{ secrets.FASTBG_PROFILE_BASE64 }}
+          FASTBG_ASC_KEY_P8: ${{ secrets.FASTBG_ASC_KEY_P8 }}
+        run: scripts/ci-signing.sh setup
+      - name: Build, notarize and staple
+        env:
+          FASTBG_ASC_KEY: ${{ runner.temp }}/signing/AuthKey.p8
+          FASTBG_ASC_KEY_ID: ${{ secrets.FASTBG_ASC_KEY_ID }}
+          FASTBG_ASC_ISSUER: ${{ secrets.FASTBG_ASC_ISSUER }}
+        run: scripts/release.sh
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" "dist/fastbg-$TAG.zip" "dist/fastbg-$TAG.zip.sha256" --verify-tag \
+            --title "FastBG $TAG" --generate-notes
+      - name: Take down signing
+        if: always()
+        run: scripts/ci-signing.sh cleanup

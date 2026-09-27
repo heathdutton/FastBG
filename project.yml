@@ -1,0 +1,110 @@
+# XcodeGen spec for fastbg. `xcodegen` writes fastbg.xcodeproj plus both Info.plists and both entitlements files
+# from this file. All of them are generated and gitignored, so edit plist keys and entitlements here.
+name: fastbg
+
+# Leave createIntermediateGroups off: with it on, a root-level config file lands in a group detached from the tree.
+options:
+  bundleIdPrefix: com.heathdutton
+  deploymentTarget:
+    macOS: "14.4"
+
+# The team ID lives in its own one-line file so this spec never holds a personal value.
+configFiles:
+  Debug: Signing.xcconfig
+  Release: Signing.xcconfig
+
+settings:
+  base:
+    MARKETING_VERSION: 0.1.0
+    CURRENT_PROJECT_VERSION: 1
+    SWIFT_VERSION: "6.0"
+    ARCHS: arm64
+    CODE_SIGN_STYLE: Automatic
+    # Automatic signing builds with Apple Development. Release re-signs with Developer ID at export.
+    CODE_SIGN_IDENTITY: Apple Development
+    ENABLE_HARDENED_RUNTIME: YES
+    DEAD_CODE_STRIPPING: YES
+
+targets:
+  fastbg:
+    type: application
+    platform: macOS
+    sources:
+      - Shared
+      - App
+      # The stock backgrounds and their credits, as Contents/Resources/Stock. scripts/make-stock.sh rebuilds them.
+      - path: Stock
+        type: folder
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_NAME: FastBG
+        PRODUCT_BUNDLE_IDENTIFIER: com.heathdutton.fastbg
+        SWIFT_OBJC_BRIDGING_HEADER: App/fastbg-Bridging-Header.h
+    info:
+      path: App/Info.plist
+      properties:
+        # XcodeGen hardcodes 1.0 and 1 unless these point at the build settings.
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSUIElement: true
+        # App/AppIcon.icns, drawn by scripts/make-icon.swift.
+        CFBundleIconFile: AppIcon
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        LSApplicationCategoryType: public.app-category.video
+        NSCameraUsageDescription: FastBG reads your camera to swap the background behind you.
+        # The marker on a tile dragged out of the panel, declared so the system knows it belongs to FastBG.
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: com.heathdutton.fastbg.tile
+            UTTypeDescription: FastBG background
+            UTTypeConformsTo: [public.data]
+    entitlements:
+      path: App/fastbg.entitlements
+      properties:
+        com.apple.developer.system-extension.install: true
+        # Hardened runtime blocks the camera without this.
+        com.apple.security.device.camera: true
+        # sysextd refuses to activate a camera extension whose host app lacks the extension's app group. The app
+        # never opens the group container: unsandboxed, that can prompt.
+        com.apple.security.application-groups:
+          - $(TeamIdentifierPrefix)com.heathdutton.fastbg.camera
+    dependencies:
+      # A system-extension dependency lands in Contents/Library/SystemExtensions.
+      - target: fastbg-camera
+    scheme: {}
+
+  fastbg-camera:
+    type: system-extension
+    platform: macOS
+    # System extensions are named after their bundle ID. productName only names the product reference, so
+    # PRODUCT_NAME below has to agree with it.
+    productName: com.heathdutton.fastbg.camera
+    sources:
+      - Shared
+      - Extension
+    settings:
+      base:
+        PRODUCT_NAME: $(PRODUCT_BUNDLE_IDENTIFIER)
+        PRODUCT_BUNDLE_IDENTIFIER: com.heathdutton.fastbg.camera
+        # Ships inside fastbg.app, so an archive must not install it as a product of its own.
+        SKIP_INSTALL: YES
+    info:
+      path: Extension/Info.plist
+      properties:
+        # XcodeGen leaves the package type out for system extensions.
+        CFBundlePackageType: SYSX
+        # CFBundleName is the bundle ID here, so this is the name `systemextensionsctl list` shows.
+        CFBundleDisplayName: FastBG
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        NSSystemExtensionUsageDescription: Adds the FastBG camera that video apps can pick.
+        CMIOExtension:
+          # Must start with one of the extension's app groups, so it reuses the group's exact value below.
+          CMIOExtensionMachServiceName: $(TeamIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)
+    entitlements:
+      path: Extension/fastbg-camera.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.application-groups:
+          - $(TeamIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)

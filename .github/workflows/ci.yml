@@ -1,0 +1,74 @@
+# Builds FastBG and runs the harness's checks on every push to main and every pull request, and before a release.
+# Needs no secrets: the harness drives the pipeline without the camera or its extension.
+name: ci
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**.md"]
+  pull_request:
+    paths-ignore: ["**.md"]
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scripts:
+    name: shellcheck
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: shellcheck scripts/*.sh Checks/*.sh
+
+  checks:
+    name: build and check
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+
+      - name: Build the app with Xcode, unsigned
+        run: |
+          xcodegen generate --quiet
+          xcodebuild build -project fastbg.xcodeproj -scheme fastbg -configuration Release \
+            -destination 'generic/platform=macOS' -derivedDataPath build/xcode CODE_SIGNING_ALLOWED=NO -quiet
+          app=build/xcode/Build/Products/Release/FastBG.app
+          test -d "$app/Contents/Library/SystemExtensions/com.heathdutton.fastbg.camera.systemextension"
+          test -d "$app/Contents/Resources/Stock"
+      - name: Typecheck the Swift scripts
+        run: for f in scripts/*.swift; do swiftc -typecheck -suppress-warnings "$f"; done
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: fixtures
+        with:
+          path: Checks/Fixtures
+          key: fixtures-${{ hashFiles('Checks/fetch-fixtures.sh', 'Checks/make-green-fixtures.swift') }}
+      - name: Make the fixtures
+        if: steps.fixtures.outputs.cache-hit != 'true'
+        run: |
+          Checks/fetch-fixtures.sh
+          swift -O Checks/make-green-fixtures.swift
+      - name: Build the harness
+        run: scripts/dev-build.sh check
+      - name: Check
+        run: build/dev/fastbg-check all
+      - name: Keep the check images
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: checks
+          path: build/checks
+          retention-days: 7
+          if-no-files-found: ignore

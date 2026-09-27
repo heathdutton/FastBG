@@ -1,0 +1,20 @@
+# The Xcode every workflow builds with, and XcodeGen from its release, pinned by checksum rather than brew's latest.
+name: setup
+description: Select Xcode and install a pinned XcodeGen
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        XCODE: /Applications/Xcode_26.6.app
+        XCODEGEN_VERSION: 2.46.0
+        XCODEGEN_SHA256: 4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806
+      run: | # zizmor: ignore[github-env]
+        sudo xcode-select --switch "$XCODE"
+        dir=$RUNNER_TEMP/xcodegen-$XCODEGEN_VERSION
+        curl -fsSL --retry 3 -o "$dir.zip" \
+          "https://github.com/yonaskolb/XcodeGen/releases/download/$XCODEGEN_VERSION/xcodegen.zip"
+        echo "$XCODEGEN_SHA256  $dir.zip" | shasum -a 256 -c --quiet -
+        unzip -q "$dir.zip" -d "$dir"
+        # A fixed path under the runner's own temp, nothing from the event.
+        echo "$dir/xcodegen/bin" >>"$GITHUB_PATH"
