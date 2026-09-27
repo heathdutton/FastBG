@@ -58,8 +58,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
-          gh release create "$TAG" "dist/fastbg-$TAG.zip" "dist/fastbg-$TAG.zip.sha256" --verify-tag \
-            --title "FastBG $TAG" --generate-notes
+          gh release create "$TAG" "dist/fastbg-$TAG.dmg" "dist/fastbg-$TAG.dmg.sha256" "dist/fastbg-$TAG.zip" \
+            "dist/fastbg-$TAG.zip.sha256" --verify-tag --title "FastBG $TAG" --generate-notes
       - name: Take down signing
         if: always()
         run: scripts/ci-signing.sh cleanup

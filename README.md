@@ -15,7 +15,8 @@ It runs from the menu bar on minimal CPU and battery. With no app on the camera,
 
 ## Install
 
-1. Unzip, drag FastBG to `/Applications`, open it.
+1. Download the `.dmg` from [Releases](https://github.com/heathdutton/FastBG/releases/latest), open it, and drag
+   FastBG to Applications. Then open it from there.
 2. Approve the camera extension once in System Settings > General > Login Items & Extensions.
 3. Allow camera access when asked.
 4. Pick "FastBG" as the camera in your video app, and turn off that app's own background effects.

@@ -1,5 +1,6 @@
 #!/bin/bash
-# Builds dist/fastbg-<version>.zip: archived, re-signed with Developer ID at export, notarized and stapled.
+# Builds dist/fastbg-<version>.dmg and .zip: archived, re-signed with Developer ID at export, notarized and
+# stapled.
 #
 # Needs full Xcode, xcodegen, the team ID in Signing.xcconfig, and Apple Development and Developer ID Application
 # certificates for that team. Then either of two ways to sign in to Apple:
@@ -91,19 +92,23 @@ group=$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.application-groups
 version=$(plutil -extract CFBundleShortVersionString raw -o - "$app/Contents/Info.plist")
 [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "CFBundleShortVersionString $version isn't plain semver"
 
-ditto -c -k --keepParent "$app" "$build/notarize.zip"
-xcrun notarytool submit "$build/notarize.zip" "${notary[@]}" --wait --timeout 1h \
-  --output-format json >"$build/notary.json" || true
-status=$(plutil -extract status raw -o - "$build/notary.json" 2>/dev/null || echo unknown)
-if [[ $status != Accepted ]]; then
-  cat "$build/notary.json" >&2
-  id=$(plutil -extract id raw -o - "$build/notary.json" 2>/dev/null || true)
-  if [[ -n $id ]]; then
-    xcrun notarytool log "$id" "${notary[@]}" >&2 || true
+# Sends a file to Apple and waits, printing Apple's log if it's refused.
+notarize() {
+  local file=$1 status id
+  xcrun notarytool submit "$file" "${notary[@]}" --wait --timeout 1h --output-format json >"$build/notary.json" || true
+  status=$(plutil -extract status raw -o - "$build/notary.json" 2>/dev/null || echo unknown)
+  if [[ $status != Accepted ]]; then
+    cat "$build/notary.json" >&2
+    id=$(plutil -extract id raw -o - "$build/notary.json" 2>/dev/null || true)
+    if [[ -n $id ]]; then
+      xcrun notarytool log "$id" "${notary[@]}" >&2 || true
+    fi
+    die "notarization of ${file##*/} came back $status"
   fi
-  die "notarization came back $status"
-fi
+}
 
+ditto -c -k --keepParent "$app" "$build/notarize.zip"
+notarize "$build/notarize.zip"
 xcrun stapler staple "$app"
 xcrun stapler validate "$app"
 spctl --assess --type execute --verbose=2 "$app"
@@ -111,5 +116,21 @@ spctl --assess --type execute --verbose=2 "$app"
 zip=$dist/fastbg-$version.zip
 rm -f "$zip"
 ditto -c -k --keepParent "$app" "$zip"
-(cd "$dist" && shasum -a 256 "${zip##*/}" | tee "${zip##*/}.sha256")
-echo "gh release create $version $zip $zip.sha256"
+
+# The disk image people expect: FastBG beside a link to Applications, to drag across. Signed and notarized itself,
+# so Gatekeeper passes the image before it's even opened.
+dmg=$dist/fastbg-$version.dmg
+rm -rf "$build/dmg" "$dmg"
+mkdir -p "$build/dmg"
+ditto "$app" "$build/dmg/FastBG.app"
+ln -s /Applications "$build/dmg/Applications"
+hdiutil create -quiet -volname FastBG -srcfolder "$build/dmg" -format ULFO "$dmg"
+codesign --sign "Developer ID Application" --timestamp "$dmg"
+notarize "$dmg"
+xcrun stapler staple "$dmg"
+spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg"
+
+for file in "$dmg" "$zip"; do
+  (cd "$dist" && shasum -a 256 "${file##*/}" | tee "${file##*/}.sha256")
+done
+echo "gh release create $version $dmg $dmg.sha256 $zip $zip.sha256"
