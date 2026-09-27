@@ -13,17 +13,24 @@ FastBG takes macOS's own background effect and just pushes it a bit further, to 
 
 ## Install
 
-1. Download the `.dmg` from [Releases](https://github.com/heathdutton/FastBG/releases/latest), open it, and drag FastBG to Applications. Then open it from there.
-2. Approve the camera extension once in System Settings > General > Login Items & Extensions.
-3. Allow camera access when asked.
-4. Pick "FastBG" as the camera in your video app, and turn off that app's own background effects.
+```
+brew tap heathdutton/fastbg
+brew install --cask fastbg
+```
+
+Or download the `.dmg` from [Releases](https://github.com/heathdutton/FastBG/releases/latest), open it, and drag
+FastBG to Applications.
+
+Then open FastBG. Its setup checklist walks through the camera extension and camera access. FaceTime picks it up on
+its own. In Chrome, Zoom and the rest, pick FastBG as the camera and turn off their own background effects.
 
 Drop images, videos, `.html` files or URLs on the menu bar icon to add backgrounds. Click a thumbnail to switch.
 
 It ships with five public-domain backgrounds from NASA, the Park Service and Fish and Wildlife.
 [Stock/SOURCES.md](Stock/SOURCES.md) credits each.
 
-Uninstall by dragging the app to the Trash, then delete `~/Library/Application Support/fastbg`.
+Uninstall with `brew uninstall --cask --zap fastbg`, or drag the app to the Trash and delete
+`~/Library/Application Support/fastbg`.
 
 ## Build
 
